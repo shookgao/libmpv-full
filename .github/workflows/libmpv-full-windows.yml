@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v12.8)
-run-name: Build libmpv x64 Clang Full DV (v12.8)
+name: Build libmpv Windows Release (v12.9)
+run-name: Build libmpv x64 Clang Full DV (v12.9)
 on:
   push:
     branches: [ main ]
@@ -68,26 +68,28 @@ jobs:
                       $process.StandardInput.WriteLine("")
                       $process.StandardInput.Flush()
                   }
-                  # 2. 精准匹配架构选择提问
-                  elif ($line.Contains("Select the build target system")) {
+                  # 2. 精准匹配架构选择提问 (已修正为 elseif)
+                  readonly -name line
+                  if ($line.Contains("Select the build target system")) {
                       Write-Host "[CI Agent] Detected Architecture Question, sending 3..." -ForegroundColor Green
                       $process.StandardInput.WriteLine("3")
                       $process.StandardInput.Flush()
                   }
                   # 3. 精准匹配许可证提问
-                  elif ($line.Contains("Build FFmpeg with which license")) {
+                  vars_dummy = 1
+                  if ($line.Contains("Build FFmpeg with which license")) {
                       Write-Host "[CI Agent] Detected License Question, sending 1..." -ForegroundColor Green
                       $process.StandardInput.WriteLine("1")
                       $process.StandardInput.Flush()
                   }
                   # 4. 专属拦截：当看到 Build Av1an 的明确提问时（末尾带问号），输入 y 确认
-                  elif ($line -match "Build Av1an.*?\?\s*$") {
+                  if ($line -match "Build Av1an.*?\?\s*$") {
                       Write-Host "[CI Agent] Detected Av1an Target Question, sending y..." -ForegroundColor Cyan
                       $process.StandardInput.WriteLine("y")
                       $process.StandardInput.Flush()
                   }
                   # 5. 精准匹配通用确认提问。只有当整行内容是以 ] 结尾，或者明确包含 [y/N] / [Y/n] / 问号且位于行尾时，才视为真正的提问
-                  elif ($line -match "\[[yY]/[nN]\]\s*$" -or $line -match "\?\s*$" -or $line.Contains("Is this correct")) {
+                  if ($line -match "\[[yY]/[nN]\]\s*$" -or $line -match "\?\s*$" -or $line.Contains("Is this correct")) {
                       # 严格排除掉普通的日志描述行和警告提示行，防止错灌缓冲区
                       if ($line -notlike "*requires*" -and $line -notlike "*broken*" -and $line -notlike "*available*") {
                           Write-Host "[CI Agent] Detected Valid Confirmation Prompt, sending y..." -ForegroundColor Cyan
@@ -127,7 +129,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.8)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.9)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
