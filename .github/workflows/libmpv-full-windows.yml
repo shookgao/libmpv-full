@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v7.0)
-run-name: Build libmpv x64 Clang Full DV (v7.0)
+name: Build libmpv Windows Release (v8.0)
+run-name: Build libmpv x64 Clang Full DV (v8.0)
 on:
   push:
     branches: [ main ]
@@ -18,62 +18,71 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      # 缓存目录调整：确保缓存的是 build 和 toolchain 文件夹
-      - name: Cache build v7
+      - name: Cache build v8
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: win-mabs-clang-v7
+          key: win-mabs-clang-v8
 
-      # 核心修复 v7.0：建立官方标准的无人值守构建目录，并生成对应的编译控制桩
-      - name: Pre-configure Unattended Build (v7.0)
+      - name: Prepare build dir
         shell: cmd
+        working-directory: ./mabs
+        run: if not exist build mkdir build
+
+      # 使用 msys2 官方提供的 Action，直接构建一个完全没有交互能力的干净 Linux-like 环境
+      - name: Setup MSYS2 Environment
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: git make ninja python3
+
+      # 核心修复 v8.0：直接使用 msys2 bash 调用底层的核心编译脚本，彻底废掉 .bat 的弹窗交互能力
+      - name: Run Unattended Build via MSYS2 Bash (v8.0)
+        shell: msys2 {0}
         working-directory: ./mabs
         run: |
-          if not exist build mkdir build
+          # 1. 预先通过环境变量或最小配置声明我们需要编译的架构
+          mkdir -p build
+          cat << 'EOF' > build/media-autobuild_suite.ini
+          [General]
+          Architecture=3
+          DeleteGit=n
+          UpdateSuite=y
+          CPUThreads=$(nproc)
+          Force32=n
+          DeleteBuild=y
+          License=full
+          Compiler=clang
+          ScriptInPath=y
+          OptionChoice=y
+          [vlc]
+          vlcChoice=n
+          [mpv]
+          mpvChoice=y
+          mpv64=y
+          [ffmpeg]
+          ffmpegChoice=y
+          ffmpeg64=y
+          [media-autobuild_suite]
+          mabsChoice=y
+          EOF
+
+          # 2. 直接绕过 media-autobuild_suite.bat，用 bash 启动真正的核心构建过程
+          # 如果 build.sh 尚未生成，我们先通过无交互参数运行一次初始化
+          if [ ! -f "build/build.sh" ]; then
+              ./media-autobuild_suite.bat --silent || true
+          fi
           
-          :: 1. 写入全局首选项
-          (
-            echo [General]
-            echo Architecture=3
-            echo DeleteGit=n
-            echo UpdateSuite=y
-            echo CPUThreads=%NUMBER_OF_PROCESSORS%
-            echo Force32=n
-            echo DeleteBuild=y
-            echo License=full
-            echo Compiler=clang
-            echo ScriptInPath=y
-            echo OptionChoice=y
-            echo.
-            echo [vlc]
-            echo vlcChoice=n
-            echo.
-            echo [mpv]
-            echo mpvChoice=y
-            echo mpv64=y
-            echo.
-            echo [ffmpeg]
-            echo ffmpegChoice=y
-            echo ffmpeg64=y
-            echo.
-            echo [media-autobuild_suite]
-            echo mabsChoice=y
-          ) > build\media-autobuild_suite.ini
-
-          :: 2. 核心补丁：生成强制编译控制桩，告诉脚本不需要再次向用户确认编什么
-          echo. > build\mpv.compile
-          echo. > build\ffmpeg.compile
-          echo. > build\libplacebo.compile
-          echo. > build\libdovi.compile
-
-      # 携带标准的 --silent 标志启动
-      - name: Run Unattended Build (v7.0)
-        shell: cmd
-        working-directory: ./mabs
-        run: media-autobuild_suite.bat --silent
+          # 3. 直接在 msys2 里强制执行核心 shell 脚本
+          if [ -f "build/build.sh" ]; then
+              cd build && ./build.sh --unattended
+          else
+              echo "Fallback to silent batch mode..."
+              cd .. && ./media-autobuild_suite.bat --silent
+          fi
 
       - name: Package output files
         id: pack_step
@@ -99,7 +108,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v7.0)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v8.0)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
