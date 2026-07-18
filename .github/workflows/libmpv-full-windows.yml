@@ -18,34 +18,33 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build v3
+      - name: Cache build v4 全新缓存清空旧ini
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: win-mabs-clang-v3
+          key: win-mabs-clang-v4
 
-      - name: Create auto ini config
+      - name: Prepare build dir
+        shell: cmd
+        working-directory: ./mabs
+        run: if not exist build mkdir build
+
+      - name: Full auto answer stream 一次性输入全部交互选项
         shell: cmd
         working-directory: ./mabs
         run: |
-          if not exist build mkdir build
-          echo [options] > build/media-autobuild_suite.ini
-          echo arch=3 >> build/media-autobuild_suite.ini
-          echo build32=n >> build/media-autobuild_suite.ini
-          echo nonfree=y >> build/media-autobuild_suite.ini
-          echo cpu=%NUMBER_OF_PROCESSORS% >> build/media-autobuild_suite.ini
-          echo buildmpv=n >> build/media-autobuild_suite.ini
-          echo libplacebo=y >> build/media-autobuild_suite.ini
-          echo ffmpeg=full >> build/media-autobuild_suite.ini
-          echo compiler=clang >> build/media-autobuild_suite.ini
-
-      # 官方标准静默编译，彻底移除管道输入，解决set报错+弹窗
-      - name: Run MABS official auto silent build
-        shell: cmd
-        working-directory: ./mabs
-        run: media-autobuild_suite.bat --auto
+          (
+          echo 3
+          echo n
+          echo y
+          echo %NUMBER_OF_PROCESSORS%
+          echo n
+          echo y
+          echo full
+          echo clang
+          ) | media-autobuild_suite.bat
 
       - name: Package output files
         id: pack_step
