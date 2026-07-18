@@ -31,22 +31,27 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复：通过括号组合所有的 echo，一次性灌入管道，并在全新 cmd 实例中执行，彻底击穿任何交互卡死
-      - name: Run build with forced pipeline input
+      # 核心修复：直接生成 mabs 官方认可的静默配置文件，彻底根除所有弹窗和提问菜单
+      - name: Generate mabs configuration file
         shell: cmd
         working-directory: ./mabs
         run: |
-          (
-            echo.
-            echo 3
-            echo n
-            echo y
-            echo %NUMBER_OF_PROCESSORS%
-            echo n
-            echo y
-            echo full
-            echo clang
-          ) | cmd /c media-autobuild_suite.bat
+          echo [General] > media-autobuild_suite.ini
+          echo BaseStructure=3 >> media-autobuild_suite.ini
+          echo DeleteGit=n >> media-autobuild_suite.ini
+          echo UpdateSuite=y >> media-autobuild_suite.ini
+          echo CPUThreads=%NUMBER_OF_PROCESSORS% >> media-autobuild_suite.ini
+          echo Force32=n >> media-autobuild_suite.ini
+          echo DeleteBuild=y >> media-autobuild_suite.ini
+          echo License=full >> media-autobuild_suite.ini
+          echo Compiler=clang >> media-autobuild_suite.ini
+          echo ScriptInPath=y >> media-autobuild_suite.ini
+
+      # 有了上面的 ini 配置文件，直接正常启动即可，它会检测到并直接进入无交互静默编译
+      - name: Run build in native silent mode
+        shell: cmd
+        working-directory: ./mabs
+        run: media-autobuild_suite.bat
 
       - name: Package output files
         id: pack_step
