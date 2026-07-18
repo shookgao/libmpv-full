@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v12.1)
-run-name: Build libmpv x64 Clang Full DV (v12.1)
+name: Build libmpv Windows Release (v12.2)
+run-name: Build libmpv x64 Clang Full DV (v12.2)
 on:
   push:
     branches: [ main ]
@@ -31,7 +31,6 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复 v12.1：修正了上个版本导致 YAML 语法错误的无用行
       - name: Generate Base Config
         shell: cmd
         working-directory: ./mabs
@@ -58,7 +57,6 @@ jobs:
           echo mabsChoice=y>> build\media-autobuild_suite.ini
           copy build\media-autobuild_suite.ini media-autobuild_suite.ini /Y
 
-      # 使用 .NET 进程管道在后台直接拉起并自动灌入输入流
       - name: Force Feed Standard Input via .NET Process
         shell: powershell
         working-directory: ./mabs
@@ -76,21 +74,21 @@ jobs:
           
           [void]$process.Start()
           
-          # 连续向标准输入流灌入选择，回车闭合以击穿可能的交互提问
-          $process.StandardInput.WriteLine("3")
-          $process.StandardInput.WriteLine("y")
-          $process.StandardInput.WriteLine("y")
+          # 连续灌入标准答案序列：3(64位) -> 1(Non-free) -> y(确认)
+          $answers = @("3", "1", "y", "y", "y", "y", "y")
+          foreach ($ans in $answers) {
+              $process.StandardInput.WriteLine($ans)
+          }
           $process.StandardInput.Flush()
           
-          # 实时打印终端输出
+          # 实时打印日志
           while (-not $process.HasExited) {
               $output = $process.StandardOutput.ReadLine()
               if ($output) { Write-Host $output }
           }
           
           if ($process.ExitCode -ne 0) {
-              $err = $process.StandardError.ReadToEnd()
-              Write-Error "构建失败，错误信息: $err"
+              Write-Error "构建进程异常终止，退出码: $($process.ExitCode)"
               exit $process.ExitCode
           }
 
@@ -118,7 +116,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.1)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.2)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
