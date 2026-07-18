@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v12.2)
-run-name: Build libmpv x64 Clang Full DV (v12.2)
+name: Build libmpv Windows Release (v12.3)
+run-name: Build libmpv x64 Clang Full DV (v12.3)
 on:
   push:
     branches: [ main ]
@@ -74,21 +74,19 @@ jobs:
           
           [void]$process.Start()
           
-          # 连续灌入标准答案序列：3(64位) -> 1(Non-free) -> y(确认)
           $answers = @("3", "1", "y", "y", "y", "y", "y")
           foreach ($ans in $answers) {
               $process.StandardInput.WriteLine($ans)
           }
           $process.StandardInput.Flush()
           
-          # 实时打印日志
           while (-not $process.HasExited) {
               $output = $process.StandardOutput.ReadLine()
               if ($output) { Write-Host $output }
           }
           
           if ($process.ExitCode -ne 0) {
-              Write-Error "构建进程异常终止，退出码: $($process.ExitCode)"
+              Write-Error "Build process exited with code: $($process.ExitCode)"
               exit $process.ExitCode
           }
 
@@ -116,7 +114,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.2)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.3)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
