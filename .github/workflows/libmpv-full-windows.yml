@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v8.0)
-run-name: Build libmpv x64 Clang Full DV (v8.0)
+name: Build libmpv Windows Release (v9.0)
+run-name: Build libmpv x64 Clang Full DV (v9.0)
 on:
   push:
     branches: [ main ]
@@ -18,71 +18,61 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build v8
+      # 恢复原本的极速缓存
+      - name: Cache build v9
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: win-mabs-clang-v8
+          key: win-mabs-clang-v9
 
       - name: Prepare build dir
         shell: cmd
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 使用 msys2 官方提供的 Action，直接构建一个完全没有交互能力的干净 Linux-like 环境
-      - name: Setup MSYS2 Environment
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: git make ninja python3
-
-      # 核心修复 v8.0：直接使用 msys2 bash 调用底层的核心编译脚本，彻底废掉 .bat 的弹窗交互能力
-      - name: Run Unattended Build via MSYS2 Bash (v8.0)
-        shell: msys2 {0}
+      # 核心修复 v9.0：移除耗时 MSYS2，用 PowerShell 直接抽掉 .bat 里的交互式输入函数（set /p）
+      # 让脚本在完全没有输入的情况下自动套用默认值或预设值
+      - name: Kill Interactive Inputs (v9.0)
+        shell: powershell
         working-directory: ./mabs
         run: |
-          # 1. 预先通过环境变量或最小配置声明我们需要编译的架构
-          mkdir -p build
-          cat << 'EOF' > build/media-autobuild_suite.ini
-          [General]
-          Architecture=3
-          DeleteGit=n
-          UpdateSuite=y
-          CPUThreads=$(nproc)
-          Force32=n
-          DeleteBuild=y
-          License=full
-          Compiler=clang
-          ScriptInPath=y
-          OptionChoice=y
-          [vlc]
-          vlcChoice=n
-          [mpv]
-          mpvChoice=y
-          mpv64=y
-          [ffmpeg]
-          ffmpegChoice=y
-          ffmpeg64=y
-          [media-autobuild_suite]
-          mabsChoice=y
-          EOF
-
-          # 2. 直接绕过 media-autobuild_suite.bat，用 bash 启动真正的核心构建过程
-          # 如果 build.sh 尚未生成，我们先通过无交互参数运行一次初始化
-          if [ ! -f "build/build.sh" ]; then
-              ./media-autobuild_suite.bat --silent || true
-          fi
+          $batPath = "media-autobuild_suite.bat"
+          $content = Get-Content $batPath -Raw
           
-          # 3. 直接在 msys2 里强制执行核心 shell 脚本
-          if [ -f "build/build.sh" ]; then
-              cd build && ./build.sh --unattended
-          else
-              echo "Fallback to silent batch mode..."
-              cd .. && ./media-autobuild_suite.bat --silent
-          fi
+          # 1. 在脚本最开头强制塞入你所需要的目标变量，确保其优先级最高
+          $presetVariables = @"
+          @echo off
+          set "Architecture=3"
+          set "DeleteGit=n"
+          set "UpdateSuite=y"
+          set "CPUThreads=$env:NUMBER_OF_PROCESSORS"
+          set "Force32=n"
+          set "DeleteBuild=y"
+          set "License=full"
+          set "Compiler=clang"
+          set "ScriptInPath=y"
+          set "OptionChoice=y"
+          set "mpvChoice=y"
+          set "mpv64=y"
+          set "ffmpegChoice=y"
+          set "ffmpeg64=y"
+          "@
+          $content = $content -replace "@echo off", $presetVariables
+
+          # 2. 暴力降维打击：通过正则把脚本里所有形如 "set /p 变量=" 的交互式输入命令
+          # 替换成不需要等待输入的普通的赋值语句，彻底根除卡死状态
+          $content = $content -replace 'set\s+/p\s+([a-zA-Z0-9_]+)=.*', 'set "$1=" '
+          
+          Set-Content -Path $batPath -Value $content -Encoding utf8
+          Write-Host "成功应用 v9.0 补丁：已移除全部慢速组件，并强制剥离脚本的交互式键盘输入逻辑。"
+
+      # 运行已经完全丧失交互提问能力的本地批处理
+      - name: Run build (v9.0)
+        shell: cmd
+        working-directory: ./mabs
+        run: media-autobuild_suite.bat --silent
 
       - name: Package output files
         id: pack_step
@@ -108,7 +98,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v8.0)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v9.0)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
