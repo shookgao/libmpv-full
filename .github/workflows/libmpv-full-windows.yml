@@ -18,7 +18,7 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build & toolchain (v2全新缓存，清除旧异常配置)
+      - name: Cache build & toolchain v2
         uses: actions/cache@v4
         with:
           path: |
@@ -26,23 +26,14 @@ jobs:
             mabs/build
           key: ${{ runner.os }}-mabs-clang-libmpv-v2
 
-      - name: Write silent build.conf 静默编译配置
+      - name: Write silent build.conf
         shell: pwsh
         working-directory: ./mabs
         run: |
-          $config = @"
-arch=3
-build32=n
-nonfree=y
-cpu=$($env:NUMBER_OF_PROCESSORS)
-buildmpv=n
-libplacebo=y
-ffmpeg=full
-compiler=clang
-"@
-          $config | Out-File -FilePath build.conf -Encoding UTF8
+          $lines = @("arch=3","build32=n","nonfree=y","cpu=$($env:NUMBER_OF_PROCESSORS)","buildmpv=n","libplacebo=y","ffmpeg=full","compiler=clang")
+          $lines -join "`n" | Out-File build.conf -Encoding UTF8
 
-      - name: Run MABS full compile --auto 强制无交互编译
+      - name: Run MABS auto silent compile
         shell: cmd
         working-directory: ./mabs
         run: media-autobuild_suite.bat --auto
@@ -113,7 +104,7 @@ compiler=clang
           Compress-Archive -Path $outDir -DestinationPath $zipName -Force
           echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
 
-      - name: Upload package to GitHub Release 永久保存
+      - name: Upload package to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-build-${{ github.sha }}
