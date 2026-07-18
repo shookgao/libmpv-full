@@ -18,25 +18,38 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build & toolchain v2
+      - name: Cache build & toolchain v3（全新缓存清空旧异常）
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: ${{ runner.os }}-mabs-clang-libmpv-v2
+          key: ${{ runner.os }}-mabs-clang-libmpv-v3
 
-      - name: Write silent build.conf
+      - name: 生成官方识别的media-autobuild_suite.ini配置
         shell: pwsh
         working-directory: ./mabs
         run: |
-          $lines = @("arch=3","build32=n","nonfree=y","cpu=$($env:NUMBER_OF_PROCESSORS)","buildmpv=n","libplacebo=y","ffmpeg=full","compiler=clang")
-          $lines -join "`n" | Out-File build.conf -Encoding UTF8
+          # 先创建build目录
+          New-Item -Path build -ItemType Directory -Force | Out-Null
+          # 写入64位专属配置ini
+          $iniContent = @"
+[options]
+arch=3
+build32=n
+nonfree=y
+cpu=$($env:NUMBER_OF_PROCESSORS)
+buildmpv=n
+libplacebo=y
+ffmpeg=full
+compiler=clang
+"@
+          $iniContent | Out-File -FilePath build/media-autobuild_suite.ini -Encoding UTF8
 
-      - name: Run MABS auto silent compile
+      - name: 管道预设输入+静默编译，彻底屏蔽交互弹窗
         shell: cmd
         working-directory: ./mabs
-        run: media-autobuild_suite.bat --auto
+        run: echo 3 | media-autobuild_suite.bat
 
       - name: Collect output & generate BUILD_INFO.md
         id: pack_step
@@ -64,7 +77,7 @@ jobs:
             "- 项目仓库: $repoUrl",
             "",
             "## 编译参数配置",
-            "- CPU架构: 仅 x86_64 64位 (arch=3)",
+            "- CPU架构: 仅 x86_64 64位",
             "- FFmpeg: full 完整版，开启 non-free 专有编码(fdk-aac)",
             "- 编译器: clang",
             "- 不编译 mpv 播放器 exe，仅输出 libmpv 开发库",
