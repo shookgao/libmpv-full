@@ -1,5 +1,5 @@
 name: Build libmpv Windows Release
-run-name: Build libmpv x64 Clang Full DV + Build Info Doc
+run-name: Build libmpv x64 Clang Full DV
 on:
   push:
     branches: [ main ]
@@ -11,124 +11,72 @@ jobs:
   build-libmpv:
     runs-on: windows-latest
     steps:
-      - name: Checkout media-autobuild_suite
+      - name: Checkout mabs
         uses: actions/checkout@v4
         with:
           repository: m-ab-s/media-autobuild_suite
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build & toolchain v3（全新缓存清空旧异常）
+      - name: Cache build v3
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: ${{ runner.os }}-mabs-clang-libmpv-v3
+          key: win-mabs-clang-v3
 
-      - name: 生成官方识别的media-autobuild_suite.ini配置
-        shell: pwsh
+      - name: Create auto ini config
+        shell: cmd
         working-directory: ./mabs
         run: |
-          # 先创建build目录
-          New-Item -Path build -ItemType Directory -Force | Out-Null
-          # 写入64位专属配置ini
-          $iniContent = @"
-[options]
-arch=3
-build32=n
-nonfree=y
-cpu=$($env:NUMBER_OF_PROCESSORS)
-buildmpv=n
-libplacebo=y
-ffmpeg=full
-compiler=clang
-"@
-          $iniContent | Out-File -FilePath build/media-autobuild_suite.ini -Encoding UTF8
+          mkdir build
+          echo [options] > build/media-autobuild_suite.ini
+          echo arch=3 >> build/media-autobuild_suite.ini
+          echo build32=n >> build/media-autobuild_suite.ini
+          echo nonfree=y >> build/media-autobuild_suite.ini
+          echo cpu=%NUMBER_OF_PROCESSORS% >> build/media-autobuild_suite.ini
+          echo buildmpv=n >> build/media-autobuild_suite.ini
+          echo libplacebo=y >> build/media-autobuild_suite.ini
+          echo ffmpeg=full >> build/media-autobuild_suite.ini
+          echo compiler=clang >> build/media-autobuild_suite.ini
 
-      - name: 管道预设输入+静默编译，彻底屏蔽交互弹窗
+      - name: Run build auto input 64bit
         shell: cmd
         working-directory: ./mabs
         run: echo 3 | media-autobuild_suite.bat
 
-      - name: Collect output & generate BUILD_INFO.md
+      - name: Package output files
         id: pack_step
-        shell: pwsh
+        shell: cmd
         run: |
-          $gitCommit = "$($env:GITHUB_SHA)"
-          $repoUrl = "$($env:GITHUB_REPOSITORY_URL)"
-          $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+          mkdir libmpv_output
+          mkdir libmpv_output\include
+          copy mabs\local64\bin-video\include\* libmpv_output\include\ /E /Y
+          copy mabs\local64\bin-video\libmpv.dll.a libmpv_output\ /Y
+          copy mabs\local64\bin-video\libmpv-2.dll libmpv_output\ /Y
 
-          $outDir = "libmpv_output"
-          New-Item $outDir -ItemType Directory -Force | Out-Null
-          New-Item "$outDir/include" -ItemType Directory -Force | Out-Null
+          echo # libmpv Windows 编译产物说明 > libmpv_output\BUILD_INFO.md
+          echo ## 编译基础信息 >> libmpv_output\BUILD_INFO.md
+          echo - 编译工具链: MinGW Clang x86_64 >> libmpv_output\BUILD_INFO.md
+          echo - 架构: 纯64位 >> libmpv_output\BUILD_INFO.md
+          echo - 内置 libplacebo + libdovi 杜比视界 >> libmpv_output\BUILD_INFO.md
+          echo - FFmpeg full 全编码支持 >> libmpv_output\BUILD_INFO.md
+          echo - 无需外置dll，单文件运行 >> libmpv_output\BUILD_INFO.md
 
-          Copy-Item mabs/local64/bin-video/include/* "$outDir/include" -Recurse -Force
-          Copy-Item mabs/local64/bin-video/libmpv.dll.a $outDir -Force
-          Copy-Item mabs/local64/bin-video/libmpv-2.dll $outDir -Force
+          powershell Compress-Archive -Path libmpv_output -DestinationPath libmpv-win64.zip -Force
+          echo zipname=libmpv-win64.zip >> %GITHUB_OUTPUT%
 
-          $mdLines = @(
-            "# libmpv Windows 编译产物说明",
-            "## 编译基础信息",
-            "- 编译时间: $buildTime",
-            "- Git 提交哈希: $gitCommit",
-            "- 编译工具链: MinGW Clang x86_64",
-            "- 编译脚本: media-autobuild_suite",
-            "- 项目仓库: $repoUrl",
-            "",
-            "## 编译参数配置",
-            "- CPU架构: 仅 x86_64 64位",
-            "- FFmpeg: full 完整版，开启 non-free 专有编码(fdk-aac)",
-            "- 编译器: clang",
-            "- 不编译 mpv 播放器 exe，仅输出 libmpv 开发库",
-            "- 内置 libplacebo + libdovi，完整支持 Dolby Vision P5 / P8",
-            "",
-            "## 静态内置全部依赖（全部打包进 libmpv-2.dll，无需外置dll）",
-            "### 视频解码模块",
-            "libx264, libx265, libaom, libdav1d, libvpx, ffnvcodec, AMF 硬解",
-            "",
-            "### 音频解码模块",
-            "libfdk-aac, lame, opus, vorbis",
-            "",
-            "### 色彩渲染 & 杜比视界",
-            "libplacebo, libdovi, zimg, lcms2, libjpeg",
-            "",
-            "### 字幕 & 封装",
-            "libass(ASS特效字幕), libbluray",
-            "",
-            "### 底层基础库",
-            "zlib, iconv",
-            "",
-            "## 压缩包目录结构",
-            "libmpv_output/",
-            "├─ BUILD_INFO.md        # 本说明文档",
-            "├─ include/             # mpv C API 头文件（编译链接使用）",
-            "├─ libmpv.dll.a         # MinGW 导入库（仅编译阶段需要）",
-            "└─ libmpv-2.dll         # 运行时主库，单文件包含全部依赖",
-            "",
-            "## Flutter Windows 使用教程",
-            "1. 编译阶段：将 include 文件夹 + libmpv.dll.a 复制到项目 windows/lib",
-            "2. 调试/打包运行：将 libmpv-2.dll 重命名为 mpv-2.dll，放入 windows/runner/Debug / Release",
-            "3. 特性：原生支持完整杜比视界动态元数据渲染，无需额外拷贝大量解码dll"
-          )
-          $mdLines | Out-File "$outDir/BUILD_INFO.md" -Encoding utf8
-
-          $zipName = "libmpv-windows-x64-clang-dovi-$gitCommit.zip"
-          Compress-Archive -Path $outDir -DestinationPath $zipName -Force
-          echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
-
-      - name: Upload package to Release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: libmpv-build-${{ github.sha }}
+          tag_name: libmpv-stable
           release_name: libmpv Windows x64 Clang Full DolbyVision
           body: |
-            ### 编译包简介
-            - Clang x64 静态完整编译 libmpv
-            - 内置完整 FFmpeg、libplacebo、libdovi 杜比视界解析库
-            - 原生支持 Dolby Vision P5 / P8、全部音视频编码格式
-            - 运行仅需 libmpv-2.dll，无任何外置解码依赖
-            - 完整内置依赖清单、编译参数查看压缩包内 BUILD_INFO.md
-            - 本次编译 Git 提交哈希：${{ github.sha }}
+            ### 编译包说明
+            - Clang x64 静态编译 libmpv
+            - 内置 FFmpeg + libplacebo + libdovi，完整杜比视界P5/P8
+            - 仅 libmpv-2.dll 即可运行，无额外依赖
+            - 完整依赖查看压缩包内 BUILD_INFO.md
           files: ${{ steps.pack_step.outputs.zipname }}
           overwrite: true
