@@ -31,13 +31,13 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复：直接生成 mabs 官方认可的静默配置文件，彻底根除所有弹窗和提问菜单
-      - name: Generate mabs configuration file
+      # 核心修复：使用官方精确匹配的无人值守配置字段
+      - name: Generate correct mabs configuration file
         shell: cmd
         working-directory: ./mabs
         run: |
           echo [General] > media-autobuild_suite.ini
-          echo BaseStructure=3 >> media-autobuild_suite.ini
+          echo Architecture=3 >> media-autobuild_suite.ini
           echo DeleteGit=n >> media-autobuild_suite.ini
           echo UpdateSuite=y >> media-autobuild_suite.ini
           echo CPUThreads=%NUMBER_OF_PROCESSORS% >> media-autobuild_suite.ini
@@ -46,12 +46,13 @@ jobs:
           echo License=full >> media-autobuild_suite.ini
           echo Compiler=clang >> media-autobuild_suite.ini
           echo ScriptInPath=y >> media-autobuild_suite.ini
+          echo OptionChoice=y >> media-autobuild_suite.ini
 
-      # 有了上面的 ini 配置文件，直接正常启动即可，它会检测到并直接进入无交互静默编译
+      # 配合官方的 --silent 参数，强制双重锁死无交互
       - name: Run build in native silent mode
         shell: cmd
         working-directory: ./mabs
-        run: media-autobuild_suite.bat
+        run: media-autobuild_suite.bat --silent
 
       - name: Package output files
         id: pack_step
