@@ -18,45 +18,51 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build & toolchain
+      - name: Cache build & toolchain (v2全新缓存，清除旧异常配置)
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: ${{ runner.os }}-mabs-clang-libmpv-v1
+          key: ${{ runner.os }}-mabs-clang-libmpv-v2
 
-      - name: Write silent build config
+      - name: Write silent build.conf 静默编译配置
         shell: pwsh
+        working-directory: ./mabs
         run: |
-          $confText = "arch=2`nbuild32=n`nnonfree=y`ncpu=$env:NUMBER_OF_PROCESSORS`nbuildmpv=n`nlibplacebo=y`nffmpeg=full`ncompiler=clang"
-          Out-File mabs/build.conf -InputObject $confText -Encoding ASCII
+          $config = @"
+arch=3
+build32=n
+nonfree=y
+cpu=$($env:NUMBER_OF_PROCESSORS)
+buildmpv=n
+libplacebo=y
+ffmpeg=full
+compiler=clang
+"@
+          $config | Out-File -FilePath build.conf -Encoding UTF8
 
-      - name: Run MABS full compile
+      - name: Run MABS full compile --auto 强制无交互编译
         shell: cmd
         working-directory: ./mabs
-        run: media-autobuild_suite.bat
+        run: media-autobuild_suite.bat --auto
 
       - name: Collect output & generate BUILD_INFO.md
         id: pack_step
         shell: pwsh
         run: |
-          # 1. 提前把github内置变量转成powershell本地变量
           $gitCommit = "$($env:GITHUB_SHA)"
           $repoUrl = "$($env:GITHUB_REPOSITORY_URL)"
           $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
 
-          # 2. 创建输出目录
           $outDir = "libmpv_output"
           New-Item $outDir -ItemType Directory -Force | Out-Null
           New-Item "$outDir/include" -ItemType Directory -Force | Out-Null
 
-          # 3. 复制编译产物
           Copy-Item mabs/local64/bin-video/include/* "$outDir/include" -Recurse -Force
           Copy-Item mabs/local64/bin-video/libmpv.dll.a $outDir -Force
           Copy-Item mabs/local64/bin-video/libmpv-2.dll $outDir -Force
 
-          # 4. 纯文本拼接md文档
           $mdLines = @(
             "# libmpv Windows 编译产物说明",
             "## 编译基础信息",
@@ -67,7 +73,7 @@ jobs:
             "- 项目仓库: $repoUrl",
             "",
             "## 编译参数配置",
-            "- CPU架构: 仅 x86_64 64位",
+            "- CPU架构: 仅 x86_64 64位 (arch=3)",
             "- FFmpeg: full 完整版，开启 non-free 专有编码(fdk-aac)",
             "- 编译器: clang",
             "- 不编译 mpv 播放器 exe，仅输出 libmpv 开发库",
@@ -101,26 +107,24 @@ jobs:
             "2. 调试/打包运行：将 libmpv-2.dll 重命名为 mpv-2.dll，放入 windows/runner/Debug / Release",
             "3. 特性：原生支持完整杜比视界动态元数据渲染，无需额外拷贝大量解码dll"
           )
-          # 写入md文件
           $mdLines | Out-File "$outDir/BUILD_INFO.md" -Encoding utf8
 
-          # 打包压缩
           $zipName = "libmpv-windows-x64-clang-dovi-$gitCommit.zip"
           Compress-Archive -Path $outDir -DestinationPath $zipName -Force
-          # 输出到步骤output，供后续Release读取
           echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
 
-      - name: Upload to GitHub Release
+      - name: Upload package to GitHub Release 永久保存
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-build-${{ github.sha }}
           release_name: libmpv Windows x64 Clang Full DolbyVision
           body: |
             ### 编译包简介
-            - Clang x64 静态编译 libmpv，内置完整 FFmpeg + libplacebo + libdovi
-            - 原生支持 Dolby Vision P5 / P8、全格式音视频解码
-            - 运行仅需 libmpv-2.dll，无外置解码依赖
-            - 完整依赖清单、编译参数查看压缩包内 BUILD_INFO.md
+            - Clang x64 静态完整编译 libmpv
+            - 内置完整 FFmpeg、libplacebo、libdovi 杜比视界解析库
+            - 原生支持 Dolby Vision P5 / P8、全部音视频编码格式
+            - 运行仅需 libmpv-2.dll，无任何外置解码依赖
+            - 完整内置依赖清单、编译参数查看压缩包内 BUILD_INFO.md
             - 本次编译 Git 提交哈希：${{ github.sha }}
           files: ${{ steps.pack_step.outputs.zipname }}
           overwrite: true
