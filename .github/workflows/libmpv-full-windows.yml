@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v10.0)
-run-name: Build libmpv x64 Clang Full DV (v10.0)
+name: Build libmpv Windows Release (v11.0)
+run-name: Build libmpv x64 Clang Full DV (v11.0)
 on:
   push:
     branches: [ main ]
@@ -18,32 +18,57 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build v10
+      - name: Cache build v11
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: win-mabs-clang-v10
+          key: win-mabs-clang-v11
 
       - name: Prepare build dir
         shell: cmd
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复 v10.0：直接采用 mabs 官方最标准的无人值守机制
-      # 本地仅创建两个空标记文件，引导它直接走非交互分支，完全不需要通过脚本回答
-      - name: Pre-configure Non-Interactive Build
+      # 核心修复 v11.0：使用纯 cmd 拼接生成官方完整的配置块，杜绝乱码，彻底撑满所有提问检测
+      - name: Generate Full Configuration via CMD
         shell: cmd
         working-directory: ./mabs
         run: |
-          :: 创建这两个文件，mabs 会自动识别并以非交互方式读取默认值
-          echo. > build\media-autobuild_suite.ini
-          echo. > .unattended
+          echo [General]> build\media-autobuild_suite.ini
+          echo Architecture=3>> build\media-autobuild_suite.ini
+          echo DeleteGit=n>> build\media-autobuild_suite.ini
+          echo UpdateSuite=y>> build\media-autobuild_suite.ini
+          echo Force32=n>> build\media-autobuild_suite.ini
+          echo DeleteBuild=y>> build\media-autobuild_suite.ini
+          echo License=full>> build\media-autobuild_suite.ini
+          echo Compiler=clang>> build\media-autobuild_suite.ini
+          echo ScriptInPath=y>> build\media-autobuild_suite.ini
+          echo OptionChoice=y>> build\media-autobuild_suite.ini
+          echo.>> build\media-autobuild_suite.ini
+          echo [vlc]>> build\media-autobuild_suite.ini
+          echo vlcChoice=n>> build\media-autobuild_suite.ini
+          echo.>> build\media-autobuild_suite.ini
+          echo [mpv]>> build\media-autobuild_suite.ini
+          echo mpvChoice=y>> build\media-autobuild_suite.ini
+          echo mpv64=y>> build\media-autobuild_suite.ini
+          echo.>> build\media-autobuild_suite.ini
+          echo [ffmpeg]>> build\media-autobuild_suite.ini
+          echo ffmpegChoice=y>> build\media-autobuild_suite.ini
+          echo ffmpeg64=y>> build\media-autobuild_suite.ini
+          echo.>> build\media-autobuild_suite.ini
+          echo [media-autobuild_suite]>> build\media-autobuild_suite.ini
+          echo mabsChoice=y>> build\media-autobuild_suite.ini
 
-      # 运行官方标准的无人值守命令
-      # --unattended 参数会强制它在没有预设值的提问中自动选择默认安全项，彻底闭嘴
-      - name: Run Native Unattended Build
+      # 同时复制一份到根目录作为双重保险
+      - name: Double insurance config
+        shell: cmd
+        working-directory: ./mabs
+        run: copy build\media-autobuild_suite.ini media-autobuild_suite.ini /Y
+
+      # 使用双重参数强制拉起
+      - name: Run Build
         shell: cmd
         working-directory: ./mabs
         run: media-autobuild_suite.bat --unattended --silent
@@ -72,7 +97,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v10.0)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v11.0)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
