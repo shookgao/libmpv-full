@@ -30,7 +30,7 @@ jobs:
         shell: cmd
         working-directory: ./mabs
         run: |
-          mkdir build
+          if not exist build mkdir build
           echo [options] > build/media-autobuild_suite.ini
           echo arch=3 >> build/media-autobuild_suite.ini
           echo build32=n >> build/media-autobuild_suite.ini
