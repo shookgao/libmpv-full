@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v12.3)
-run-name: Build libmpv x64 Clang Full DV (v12.3)
+name: Build libmpv Windows Release (v12.5)
+run-name: Build libmpv x64 Clang Full DV (v12.5)
 on:
   push:
     branches: [ main ]
@@ -15,25 +15,26 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: m-ab-s/media-autobuild_suite
-          path: mabs
+          # 核心修复 v12.5：将路径从 mabs 缩短为单字母 m，直接规避路径超过 32 字符的致命弹窗
+          path: m
           fetch-depth: 1
 
       - name: Cache build v12
         uses: actions/cache@v4
         with:
           path: |
-            mabs/toolchain
-            mabs/build
+            m/toolchain
+            m/build
           key: win-mabs-clang-v12
 
       - name: Prepare build dir
         shell: cmd
-        working-directory: ./mabs
+        working-directory: ./m
         run: if not exist build mkdir build
 
       - name: Generate Base Config
         shell: cmd
-        working-directory: ./mabs
+        working-directory: ./m
         run: |
           echo [General]> build\media-autobuild_suite.ini
           echo Architecture=3>> build\media-autobuild_suite.ini
@@ -56,10 +57,16 @@ jobs:
           echo [media-autobuild_suite]>> build\media-autobuild_suite.ini
           echo mabsChoice=y>> build\media-autobuild_suite.ini
           copy build\media-autobuild_suite.ini media-autobuild_suite.ini /Y
+          
+          :: 强制生成编译控制桩，确保 libdovi 编译进去
+          echo. > build\libdovi.compile
+          echo. > build\libplacebo.compile
+          echo. > build\mpv.compile
+          echo. > build\ffmpeg.compile
 
       - name: Force Feed Standard Input via .NET Process
         shell: powershell
-        working-directory: ./mabs
+        working-directory: ./m
         run: |
           $pInfo = New-Object System.Diagnostics.ProcessStartInfo
           $pInfo.FileName = "cmd.exe"
@@ -74,7 +81,9 @@ jobs:
           
           [void]$process.Start()
           
-          $answers = @("3", "1", "y", "y", "y", "y", "y")
+          # 针对可能出现的提问序列准备双重保险答案
+          # 如果因为意外仍然出现了 Press any key，第一个 "y" 对应它，随后的 "3" 对应架构
+          $answers = @("y", "3", "1", "y", "y", "y", "y", "y")
           foreach ($ans in $answers) {
               $process.StandardInput.WriteLine($ans)
           }
@@ -96,9 +105,9 @@ jobs:
         run: |
           mkdir libmpv_output
           mkdir libmpv_output\include
-          xcopy mabs\local64\bin-video\include\* libmpv_output\include\ /E /Y /I
-          copy mabs\local64\bin-video\libmpv.dll.a libmpv_output\ /Y
-          copy mabs\local64\bin-video\libmpv-2.dll libmpv_output\ /Y
+          xcopy m\local64\bin-video\include\* libmpv_output\include\ /E /Y /I
+          copy m\local64\bin-video\libmpv.dll.a libmpv_output\ /Y
+          copy m\local64\bin-video\libmpv-2.dll libmpv_output\ /Y
 
           echo # libmpv Windows Build Info > libmpv_output\BUILD_INFO.md
           echo ## Base Info >> libmpv_output\BUILD_INFO.md
@@ -114,7 +123,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.3)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.5)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
