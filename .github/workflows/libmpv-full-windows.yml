@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release
-run-name: Build libmpv x64 Clang Full DV
+name: Build libmpv Windows Release (v5.0)
+run-name: Build libmpv x64 Clang Full DV (v5.0)
 on:
   push:
     branches: [ main ]
@@ -31,45 +31,45 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复：一次性写入官方全量静默配置，漏掉任何一个都会触发交互提问
-      - name: Generate complete mabs configuration file
-        shell: cmd
+      # 核心修复 v5.0：直接使用 PowerShell 修改它的 .bat 源码，强行写死变量，剥夺它提问的能力
+      - name: Force Patch Build Script (v5.0)
+        shell: powershell
         working-directory: ./mabs
         run: |
-          (
-            echo [General]
-            echo Architecture=3
-            echo DeleteGit=n
-            echo UpdateSuite=y
-            echo CPUThreads=%NUMBER_OF_PROCESSORS%
-            echo Force32=n
-            echo DeleteBuild=y
-            echo License=full
-            echo Compiler=clang
-            echo ScriptInPath=y
-            echo OptionChoice=y
-            echo.
-            echo [vlc]
-            echo vlcChoice=n
-            echo.
-            echo [mpv]
-            echo mpvChoice=y
-            echo mpv64=y
-            echo.
-            echo [ffmpeg]
-            echo ffmpegChoice=y
-            echo ffmpeg64=y
-            echo.
-            echo [media-autobuild_suite]
-            echo mabsChoice=y
-          ) > media-autobuild_suite.ini
+          $batPath = "media-autobuild_suite.bat"
+          $content = Get-Content $batPath -Raw
+          
+          # 1. 强行在批处理开头注入变量定义，覆盖掉后续所有的交互式 set /p 赋值
+          $patch = @"
+          @echo off
+          set "Architecture=3"
+          set "DeleteGit=n"
+          set "UpdateSuite=y"
+          set "CPUThreads=$env:NUMBER_OF_PROCESSORS"
+          set "Force32=n"
+          set "DeleteBuild=y"
+          set "License=full"
+          set "Compiler=clang"
+          set "ScriptInPath=y"
+          set "OptionChoice=y"
+          set "mpvChoice=y"
+          set "mpv64=y"
+          set "ffmpegChoice=y"
+          set "ffmpeg64=y"
+          "@
+          
+          # 2. 将强行定义的变量塞入脚本头部
+          $content = $content -replace "@echo off", $patch
+          Set-Content -Path $batPath -Value $content -Encoding utf8
+          Write-Host "成功应用 v5.0 补丁：已将编译选项硬编码写入底层脚本。"
 
-      # 带有完整配置文件的启动
-      - name: Run build in native silent mode
+      # 运行已经失去提问能力的脚本
+      - name: Run build (v5.0)
         shell: cmd
         working-directory: ./mabs
-        run: media-autobuild_suite.bat --silent
+        run: media-autobuild_suite.bat
 
+      # 后续打包保持不变
       - name: Package output files
         id: pack_step
         shell: cmd
@@ -95,7 +95,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v5.0)
           body: |
             ### 编译包说明
             - Clang x64 静态编译 libmpv
