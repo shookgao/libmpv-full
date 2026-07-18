@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v12.7)
-run-name: Build libmpv x64 Clang Full DV (v12.7)
+name: Build libmpv Windows Release (v12.8)
+run-name: Build libmpv x64 Clang Full DV (v12.8)
 on:
   push:
     branches: [ main ]
@@ -35,7 +35,7 @@ jobs:
         shell: cmd
         working-directory: ./m
         run: |
-          :: 强制生成编译控制桩，在跳过非核心提问后直接锁定 libdovi 和相关依赖
+          :: 强行生成编译控制桩，在跳过初始化提问后直接锁定 libdovi 和核心依赖
           echo. > build\libdovi.compile
           echo. > build\libplacebo.compile
           echo. > build\mpv.compile
@@ -47,7 +47,6 @@ jobs:
         run: |
           $pInfo = New-Object System.Diagnostics.ProcessStartInfo
           $pInfo.FileName = "cmd.exe"
-          # 移除 --non-interactive 避免死循环，走正常无人值守读取模式
           $pInfo.Arguments = "/c media-autobuild_suite.bat --unattended"
           $pInfo.RedirectStandardInput = $true
           $pInfo.RedirectStandardOutput = $true
@@ -58,35 +57,43 @@ jobs:
           $process.StartInfo = $pInfo
           [void]$process.Start()
           
-          # 实时逐行读取输出，发现特定关键字再送入对应答案，解决错位问题
           while (-not $process.HasExited) {
               $line = $process.StandardOutput.ReadLine()
               if ($line) {
                   Write-Host $line
                   
-                  # 1. 碰到路径过长弹窗（双重保险）
-                  if ($line -like "*Press any key to continue*") {
+                  # 1. 路径过长弹窗拦截
+                  if ($line.Contains("Press any key to continue")) {
                       Write-Host "[CI Agent] Detected Path Warning, sending Enter..." -ForegroundColor Yellow
                       $process.StandardInput.WriteLine("")
                       $process.StandardInput.Flush()
                   }
-                  # 2. 只有看到明确的架构选择提问时，才喂 "3"
-                  elseif ($line -like "*Select the build target system*") {
+                  # 2. 精准匹配架构选择提问
+                  elif ($line.Contains("Select the build target system")) {
                       Write-Host "[CI Agent] Detected Architecture Question, sending 3..." -ForegroundColor Green
                       $process.StandardInput.WriteLine("3")
                       $process.StandardInput.Flush()
                   }
-                  # 3. 只有看到明确的许可证提问时，才喂 "1"
-                  elseif ($line -like "*Build FFmpeg with which license*") {
+                  # 3. 精准匹配许可证提问
+                  elif ($line.Contains("Build FFmpeg with which license")) {
                       Write-Host "[CI Agent] Detected License Question, sending 1..." -ForegroundColor Green
                       $process.StandardInput.WriteLine("1")
                       $process.StandardInput.Flush()
                   }
-                  # 4. 其它任何需要确认的交互（比如是否同意non-free）统一喂 "y"
-                  elseif ($line -like "*[y/N]*" -or $line -like "*[Y/n]*" -or $line -like "*Is this correct*") {
-                      Write-Host "[CI Agent] Detected Confirmation, sending y..." -ForegroundColor Cyan
+                  # 4. 专属拦截：当看到 Build Av1an 的明确提问时（末尾带问号），输入 y 确认
+                  elif ($line -match "Build Av1an.*?\?\s*$") {
+                      Write-Host "[CI Agent] Detected Av1an Target Question, sending y..." -ForegroundColor Cyan
                       $process.StandardInput.WriteLine("y")
                       $process.StandardInput.Flush()
+                  }
+                  # 5. 精准匹配通用确认提问。只有当整行内容是以 ] 结尾，或者明确包含 [y/N] / [Y/n] / 问号且位于行尾时，才视为真正的提问
+                  elif ($line -match "\[[yY]/[nN]\]\s*$" -or $line -match "\?\s*$" -or $line.Contains("Is this correct")) {
+                      # 严格排除掉普通的日志描述行和警告提示行，防止错灌缓冲区
+                      if ($line -notlike "*requires*" -and $line -notlike "*broken*" -and $line -notlike "*available*") {
+                          Write-Host "[CI Agent] Detected Valid Confirmation Prompt, sending y..." -ForegroundColor Cyan
+                          $process.StandardInput.WriteLine("y")
+                          $process.StandardInput.Flush()
+                      }
                   }
               }
           }
@@ -120,7 +127,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.7)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.8)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
