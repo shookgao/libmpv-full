@@ -41,7 +41,7 @@ jobs:
         id: pack_step
         shell: pwsh
         run: |
-          # 1. 提前把github内置变量转成powershell本地变量（关键修复！）
+          # 1. 提前把github内置变量转成powershell本地变量
           $gitCommit = "$($env:GITHUB_SHA)"
           $repoUrl = "$($env:GITHUB_REPOSITORY_URL)"
           $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
@@ -56,7 +56,7 @@ jobs:
           Copy-Item mabs/local64/bin-video/libmpv.dll.a $outDir -Force
           Copy-Item mabs/local64/bin-video/libmpv-2.dll $outDir -Force
 
-          # 4. 纯文本拼接md文档，不再使用@"" 模板字符串
+          # 4. 纯文本拼接md文档
           $mdLines = @(
             "# libmpv Windows 编译产物说明",
             "## 编译基础信息",
@@ -107,78 +107,7 @@ jobs:
           # 打包压缩
           $zipName = "libmpv-windows-x64-clang-dovi-$gitCommit.zip"
           Compress-Archive -Path $outDir -DestinationPath $zipName -Force
-          echo "ZIP_FILE=$zipName" >> $env:GITHUB_ENV
-
-      - name: Collect output & generate BUILD_INFO.md
-        id: pack_step
-        shell: pwsh
-        run: |
-          # 1. 提前把github内置变量转成powershell本地变量
-          $gitCommit = "$($env:GITHUB_SHA)"
-          $repoUrl = "$($env:GITHUB_REPOSITORY_URL)"
-          $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
-
-          # 2. 创建输出目录
-          $outDir = "libmpv_output"
-          New-Item $outDir -ItemType Directory -Force | Out-Null
-          New-Item "$outDir/include" -ItemType Directory -Force | Out-Null
-
-          # 3. 复制编译产物
-          Copy-Item mabs/local64/bin-video/include/* "$outDir/include" -Recurse -Force
-          Copy-Item mabs/local64/bin-video/libmpv.dll.a $outDir -Force
-          Copy-Item mabs/local64/bin-video/libmpv-2.dll $outDir -Force
-
-          # 4. 拼接BUILD_INFO.md内容
-          $mdLines = @(
-            "# libmpv Windows 编译产物说明",
-            "## 编译基础信息",
-            "- 编译时间: $buildTime",
-            "- Git 提交哈希: $gitCommit",
-            "- 编译工具链: MinGW Clang x86_64",
-            "- 编译脚本: media-autobuild_suite",
-            "- 项目仓库: $repoUrl",
-            "",
-            "## 编译参数配置",
-            "- CPU架构: 仅 x86_64 64位",
-            "- FFmpeg: full 完整版，开启 non-free 专有编码(fdk-aac)",
-            "- 编译器: clang",
-            "- 不编译 mpv 播放器 exe，仅输出 libmpv 开发库",
-            "- 内置 libplacebo + libdovi，完整支持 Dolby Vision P5 / P8",
-            "",
-            "## 静态内置全部依赖（全部打包进 libmpv-2.dll，无需外置dll）",
-            "### 视频解码模块",
-            "libx264, libx265, libaom, libdav1d, libvpx, ffnvcodec, AMF 硬解",
-            "",
-            "### 音频解码模块",
-            "libfdk-aac, lame, opus, vorbis",
-            "",
-            "### 色彩渲染 & 杜比视界",
-            "libplacebo, libdovi, zimg, lcms2, libjpeg",
-            "",
-            "### 字幕 & 封装",
-            "libass(ASS特效字幕), libbluray",
-            "",
-            "### 底层基础库",
-            "zlib, iconv",
-            "",
-            "## 压缩包目录结构",
-            "libmpv_output/",
-            "├─ BUILD_INFO.md        # 本说明文档",
-            "├─ include/             # mpv C API 头文件（编译链接使用）",
-            "├─ libmpv.dll.a         # MinGW 导入库（仅编译阶段需要）",
-            "└─ libmpv-2.dll         # 运行时主库，单文件包含全部依赖",
-            "",
-            "## Flutter Windows 使用教程",
-            "1. 编译阶段：将 include 文件夹 + libmpv.dll.a 复制到项目 windows/lib",
-            "2. 调试/打包运行：将 libmpv-2.dll 重命名为 mpv-2.dll，放入 windows/runner/Debug / Release",
-            "3. 特性：原生支持完整杜比视界动态元数据渲染，无需额外拷贝大量解码dll"
-          )
-          $mdLines | Out-File "$outDir/BUILD_INFO.md" -Encoding utf8
-
-          # 打包压缩
-          $zipName = "libmpv-windows-x64-clang-dovi-$gitCommit.zip"
-          Compress-Archive -Path $outDir -DestinationPath $zipName -Force
-          # 输出到步骤output，替代env全局变量
+          # 输出到步骤output，供后续Release读取
           echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
 
       - name: Upload to GitHub Release
@@ -189,10 +118,9 @@ jobs:
           body: |
             ### 编译包简介
             - Clang x64 静态编译 libmpv，内置完整 FFmpeg + libplacebo + libdovi
-            - 支持全部音视频格式、杜比视界 P5/P8
-            - 仅需 libmpv-2.dll 即可运行，无外置依赖
-            - 完整依赖清单查看压缩包内 BUILD_INFO.md
-            - 编译提交哈希：${{ github.sha }}
-          # 读取上一步输出，编辑器可识别，消除警告
+            - 原生支持 Dolby Vision P5 / P8、全格式音视频解码
+            - 运行仅需 libmpv-2.dll，无外置解码依赖
+            - 完整依赖清单、编译参数查看压缩包内 BUILD_INFO.md
+            - 本次编译 Git 提交哈希：${{ github.sha }}
           files: ${{ steps.pack_step.outputs.zipname }}
           overwrite: true
