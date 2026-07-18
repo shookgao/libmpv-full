@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v12.6)
-run-name: Build libmpv x64 Clang Full DV (v12.6)
+name: Build libmpv Windows Release (v12.7)
+run-name: Build libmpv x64 Clang Full DV (v12.7)
 on:
   push:
     branches: [ main ]
@@ -31,46 +31,70 @@ jobs:
         working-directory: ./m
         run: if not exist build mkdir build
 
-      - name: Generate Base Config
+      - name: Pre-stage compile stubs
         shell: cmd
         working-directory: ./m
         run: |
-          :: 核心修复 v12.6：在配置文件中把所有核心交互的选择全部写死
-          echo [General]> build\media-autobuild_suite.ini
-          echo Architecture=3>> build\media-autobuild_suite.ini
-          echo DeleteGit=n>> build\media-autobuild_suite.ini
-          echo UpdateSuite=y>> build\media-autobuild_suite.ini
-          echo Force32=n>> build\media-autobuild_suite.ini
-          echo DeleteBuild=y>> build\media-autobuild_suite.ini
-          echo License=full>> build\media-autobuild_suite.ini
-          echo Compiler=clang>> build\media-autobuild_suite.ini
-          echo ScriptInPath=y>> build\media-autobuild_suite.ini
-          echo OptionChoice=y>> build\media-autobuild_suite.ini
-          echo [vlc]>> build\media-autobuild_suite.ini
-          echo vlcChoice=n>> build\media-autobuild_suite.ini
-          echo [mpv]>> build\media-autobuild_suite.ini
-          echo mpvChoice=y>> build\media-autobuild_suite.ini
-          echo mpv64=y>> build\media-autobuild_suite.ini
-          echo [ffmpeg]>> build\media-autobuild_suite.ini
-          echo ffmpegChoice=y>> build\media-autobuild_suite.ini
-          echo ffmpeg64=y>> build\media-autobuild_suite.ini
-          echo [media-autobuild_suite]>> build\media-autobuild_suite.ini
-          echo mabsChoice=y>> build\media-autobuild_suite.ini
-          copy build\media-autobuild_suite.ini media-autobuild_suite.ini /Y
-          
-          :: 强制生成编译控制桩，确保真正把 libdovi 编译进去
+          :: 强制生成编译控制桩，在跳过非核心提问后直接锁定 libdovi 和相关依赖
           echo. > build\libdovi.compile
           echo. > build\libplacebo.compile
           echo. > build\mpv.compile
           echo. > build\ffmpeg.compile
 
-      - name: Run Build (Non-Interactive Mode)
-        shell: cmd
+      - name: Dynamic Smart Feed Process
+        shell: powershell
         working-directory: ./m
-        # 使用官方原生支持的纯静默无人值守参数：
-        # --unattended: 告诉脚本读取配置，完全不要弹窗提问
-        # --non-interactive: 彻底关闭标准输入等待，有任何缺失配置直接用默认值往后走，绝对不卡住
-        run: media-autobuild_suite.bat --unattended --non-interactive
+        run: |
+          $pInfo = New-Object System.Diagnostics.ProcessStartInfo
+          $pInfo.FileName = "cmd.exe"
+          # 移除 --non-interactive 避免死循环，走正常无人值守读取模式
+          $pInfo.Arguments = "/c media-autobuild_suite.bat --unattended"
+          $pInfo.RedirectStandardInput = $true
+          $pInfo.RedirectStandardOutput = $true
+          $pInfo.RedirectStandardError = $true
+          $pInfo.UseShellExecute = $false
+          
+          $process = New-Object System.Diagnostics.Process
+          $process.StartInfo = $pInfo
+          [void]$process.Start()
+          
+          # 实时逐行读取输出，发现特定关键字再送入对应答案，解决错位问题
+          while (-not $process.HasExited) {
+              $line = $process.StandardOutput.ReadLine()
+              if ($line) {
+                  Write-Host $line
+                  
+                  # 1. 碰到路径过长弹窗（双重保险）
+                  if ($line -like "*Press any key to continue*") {
+                      Write-Host "[CI Agent] Detected Path Warning, sending Enter..." -ForegroundColor Yellow
+                      $process.StandardInput.WriteLine("")
+                      $process.StandardInput.Flush()
+                  }
+                  # 2. 只有看到明确的架构选择提问时，才喂 "3"
+                  elseif ($line -like "*Select the build target system*") {
+                      Write-Host "[CI Agent] Detected Architecture Question, sending 3..." -ForegroundColor Green
+                      $process.StandardInput.WriteLine("3")
+                      $process.StandardInput.Flush()
+                  }
+                  # 3. 只有看到明确的许可证提问时，才喂 "1"
+                  elseif ($line -like "*Build FFmpeg with which license*") {
+                      Write-Host "[CI Agent] Detected License Question, sending 1..." -ForegroundColor Green
+                      $process.StandardInput.WriteLine("1")
+                      $process.StandardInput.Flush()
+                  }
+                  # 4. 其它任何需要确认的交互（比如是否同意non-free）统一喂 "y"
+                  elseif ($line -like "*[y/N]*" -or $line -like "*[Y/n]*" -or $line -like "*Is this correct*") {
+                      Write-Host "[CI Agent] Detected Confirmation, sending y..." -ForegroundColor Cyan
+                      $process.StandardInput.WriteLine("y")
+                      $process.StandardInput.Flush()
+                  }
+              }
+          }
+          
+          if ($process.ExitCode -ne 0) {
+              Write-Error "Build process exited with code: $($process.ExitCode)"
+              exit $process.ExitCode
+          }
 
       - name: Package output files
         id: pack_step
@@ -96,7 +120,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.6)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.7)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
