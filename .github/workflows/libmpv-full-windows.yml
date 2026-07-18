@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v5.0)
-run-name: Build libmpv x64 Clang Full DV (v5.0)
+name: Build libmpv Windows Release (v6.0)
+run-name: Build libmpv x64 Clang Full DV (v6.0)
 on:
   push:
     branches: [ main ]
@@ -31,45 +31,45 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复 v5.0：直接使用 PowerShell 修改它的 .bat 源码，强行写死变量，剥夺它提问的能力
-      - name: Force Patch Build Script (v5.0)
+      # 核心修复 v6.0：全英文无特殊字符脚本，使用基础拼接，彻底杜绝乱码导致的单引号闭合错误
+      - name: Force Patch Build Script (v6.0)
         shell: powershell
         working-directory: ./mabs
         run: |
           $batPath = "media-autobuild_suite.bat"
           $content = Get-Content $batPath -Raw
           
-          # 1. 强行在批处理开头注入变量定义，覆盖掉后续所有的交互式 set /p 赋值
-          $patch = @"
-          @echo off
-          set "Architecture=3"
-          set "DeleteGit=n"
-          set "UpdateSuite=y"
-          set "CPUThreads=$env:NUMBER_OF_PROCESSORS"
-          set "Force32=n"
-          set "DeleteBuild=y"
-          set "License=full"
-          set "Compiler=clang"
-          set "ScriptInPath=y"
-          set "OptionChoice=y"
-          set "mpvChoice=y"
-          set "mpv64=y"
-          set "ffmpegChoice=y"
-          set "ffmpeg64=y"
-          "@
+          # Use standard string array to avoid encoding and character issues
+          $patchLines = @(
+              "@echo off",
+              "set `"Architecture=3`"",
+              "set `"DeleteGit=n`"",
+              "set `"UpdateSuite=y`"",
+              "set `"CPUThreads=$env:NUMBER_OF_PROCESSORS`"",
+              "set `"Force32=n`"",
+              "set `"DeleteBuild=y`"",
+              "set `"License=full`"",
+              "set `"Compiler=clang`"",
+              "set `"ScriptInPath=y`"",
+              "set `"OptionChoice=y`"",
+              "set `"mpvChoice=y`"",
+              "set `"mpv64=y`"",
+              "set `"ffmpegChoice=y`"",
+              "set `"ffmpeg64=y`""
+          )
+          $patchText = [string]::Join([Environment]::NewLine, $patchLines)
           
-          # 2. 将强行定义的变量塞入脚本头部
-          $content = $content -replace "@echo off", $patch
+          # Replace the first line safely
+          $content = $content -replace "@echo off", $patchText
           Set-Content -Path $batPath -Value $content -Encoding utf8
-          Write-Host "成功应用 v5.0 补丁：已将编译选项硬编码写入底层脚本。"
+          Write-Host "Patch v6.0 applied successfully."
 
       # 运行已经失去提问能力的脚本
-      - name: Run build (v5.0)
+      - name: Run build (v6.0)
         shell: cmd
         working-directory: ./mabs
         run: media-autobuild_suite.bat
 
-      # 后续打包保持不变
       - name: Package output files
         id: pack_step
         shell: cmd
@@ -80,13 +80,12 @@ jobs:
           copy mabs\local64\bin-video\libmpv.dll.a libmpv_output\ /Y
           copy mabs\local64\bin-video\libmpv-2.dll libmpv_output\ /Y
 
-          echo # libmpv Windows 编译产物说明 > libmpv_output\BUILD_INFO.md
-          echo ## 编译基础信息 >> libmpv_output\BUILD_INFO.md
-          echo - 编译工具链: MinGW Clang x86_64 >> libmpv_output\BUILD_INFO.md
-          echo - 架构: 纯64位 >> libmpv_output\BUILD_INFO.md
-          echo - 内置 libplacebo + libdovi 杜比视界 >> libmpv_output\BUILD_INFO.md
-          echo - FFmpeg full 全编码支持 >> libmpv_output\BUILD_INFO.md
-          echo - 无需外置dll，单文件运行 >> libmpv_output\BUILD_INFO.md
+          echo # libmpv Windows Build Info > libmpv_output\BUILD_INFO.md
+          echo ## Base Info >> libmpv_output\BUILD_INFO.md
+          echo - Toolchain: MinGW Clang x86_64 >> libmpv_output\BUILD_INFO.md
+          echo - Arch: 64bit >> libmpv_output\BUILD_INFO.md
+          echo - Features: libplacebo + libdovi DolbyVision >> libmpv_output\BUILD_INFO.md
+          echo - FFmpeg: full >> libmpv_output\BUILD_INFO.md
 
           powershell Compress-Archive -Path libmpv_output -DestinationPath libmpv-win64.zip -Force
           echo zipname=libmpv-win64.zip >> %GITHUB_OUTPUT%
@@ -95,12 +94,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v5.0)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v6.0)
           body: |
-            ### 编译包说明
-            - Clang x64 静态编译 libmpv
-            - 内置 FFmpeg + libplacebo + libdovi，完整杜比视界P5/P8
-            - 仅 libmpv-2.dll 即可运行，无额外依赖
-            - 完整依赖查看压缩包内 BUILD_INFO.md
+            ### Build Info
+            - Clang x64 static build libmpv
+            - Built-in FFmpeg + libplacebo + libdovi (DolbyVision P5/P8)
+            - Single libmpv-2.dll to run
           files: ${{ steps.pack_step.outputs.zipname }}
           overwrite: true
