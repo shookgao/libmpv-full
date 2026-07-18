@@ -31,26 +31,19 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      - name: Generate answer.txt 预生成全部交互应答
+      # 核心修改：利用 mabs 官方支持的参数生成静默配置文件，并使用 -silent 模式运行
+      - name: Run build with silent non-interactive arguments
         shell: cmd
         working-directory: ./mabs
         run: |
-          rem 第一行回车：跳过路径过长 Press any key 弹窗
-          echo. > answer.txt
-          rem 全套编译选项，顺序严格匹配脚本提问
-          echo 3 >> answer.txt
-          echo n >> answer.txt
-          echo y >> answer.txt
-          echo %NUMBER_OF_PROCESSORS% >> answer.txt
-          echo n >> answer.txt
-          echo y >> answer.txt
-          echo full >> answer.txt
-          echo clang >> answer.txt
-
-      - name: Run build with answer file 重定向输入，无管道冲突
-        shell: cmd
-        working-directory: ./mabs
-        run: media-autobuild_suite.bat < answer.txt
+          :: 直接调用官方脚本并带上非交互式静默参数
+          :: -silent：彻底关闭任何交互和提问
+          :: -bit 3：对应第3项 (64 bit build system)
+          :: -g 1：不安装 git (等同于之前回答的 n)
+          :: -p y：更新或选择编译环境 (等同于之前回答的 y)
+          :: -b full：编译 full 版本 (等同于之前回答的 full)
+          :: -compiler clang：使用 clang 编译器 (等同于之前回答的 clang)
+          media-autobuild_suite.bat -silent -bit 3 -g 1 -p y -b full -compiler clang
 
       - name: Package output files
         id: pack_step
@@ -58,7 +51,8 @@ jobs:
         run: |
           mkdir libmpv_output
           mkdir libmpv_output\include
-          copy mabs\local64\bin-video\include\* libmpv_output\include\ /E /Y
+          :: 使用 xcopy 代替 copy /E，并加上 /I 确保目录正确复制
+          xcopy mabs\local64\bin-video\include\* libmpv_output\include\ /E /Y /I
           copy mabs\local64\bin-video\libmpv.dll.a libmpv_output\ /Y
           copy mabs\local64\bin-video\libmpv-2.dll libmpv_output\ /Y
 
