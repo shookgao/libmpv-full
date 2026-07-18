@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v9.0)
-run-name: Build libmpv x64 Clang Full DV (v9.0)
+name: Build libmpv Windows Release (v10.0)
+run-name: Build libmpv x64 Clang Full DV (v10.0)
 on:
   push:
     branches: [ main ]
@@ -18,61 +18,35 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      # 恢复原本的极速缓存
-      - name: Cache build v9
+      - name: Cache build v10
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: win-mabs-clang-v9
+          key: win-mabs-clang-v10
 
       - name: Prepare build dir
         shell: cmd
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复 v9.0：移除耗时 MSYS2，用 PowerShell 直接抽掉 .bat 里的交互式输入函数（set /p）
-      # 让脚本在完全没有输入的情况下自动套用默认值或预设值
-      - name: Kill Interactive Inputs (v9.0)
-        shell: powershell
-        working-directory: ./mabs
-        run: |
-          $batPath = "media-autobuild_suite.bat"
-          $content = Get-Content $batPath -Raw
-          
-          # 1. 在脚本最开头强制塞入你所需要的目标变量，确保其优先级最高
-          $presetVariables = @"
-          @echo off
-          set "Architecture=3"
-          set "DeleteGit=n"
-          set "UpdateSuite=y"
-          set "CPUThreads=$env:NUMBER_OF_PROCESSORS"
-          set "Force32=n"
-          set "DeleteBuild=y"
-          set "License=full"
-          set "Compiler=clang"
-          set "ScriptInPath=y"
-          set "OptionChoice=y"
-          set "mpvChoice=y"
-          set "mpv64=y"
-          set "ffmpegChoice=y"
-          set "ffmpeg64=y"
-          "@
-          $content = $content -replace "@echo off", $presetVariables
-
-          # 2. 暴力降维打击：通过正则把脚本里所有形如 "set /p 变量=" 的交互式输入命令
-          # 替换成不需要等待输入的普通的赋值语句，彻底根除卡死状态
-          $content = $content -replace 'set\s+/p\s+([a-zA-Z0-9_]+)=.*', 'set "$1=" '
-          
-          Set-Content -Path $batPath -Value $content -Encoding utf8
-          Write-Host "成功应用 v9.0 补丁：已移除全部慢速组件，并强制剥离脚本的交互式键盘输入逻辑。"
-
-      # 运行已经完全丧失交互提问能力的本地批处理
-      - name: Run build (v9.0)
+      # 核心修复 v10.0：直接采用 mabs 官方最标准的无人值守机制
+      # 本地仅创建两个空标记文件，引导它直接走非交互分支，完全不需要通过脚本回答
+      - name: Pre-configure Non-Interactive Build
         shell: cmd
         working-directory: ./mabs
-        run: media-autobuild_suite.bat --silent
+        run: |
+          :: 创建这两个文件，mabs 会自动识别并以非交互方式读取默认值
+          echo. > build\media-autobuild_suite.ini
+          echo. > .unattended
+
+      # 运行官方标准的无人值守命令
+      # --unattended 参数会强制它在没有预设值的提问中自动选择默认安全项，彻底闭嘴
+      - name: Run Native Unattended Build
+        shell: cmd
+        working-directory: ./mabs
+        run: media-autobuild_suite.bat --unattended --silent
 
       - name: Package output files
         id: pack_step
@@ -98,7 +72,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v9.0)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v10.0)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
