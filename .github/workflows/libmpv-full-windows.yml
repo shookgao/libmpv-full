@@ -31,19 +31,22 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修改：利用 mabs 官方支持的参数生成静默配置文件，并使用 -silent 模式运行
-      - name: Run build with silent non-interactive arguments
+      # 核心修复：通过括号组合所有的 echo，一次性灌入管道，并在全新 cmd 实例中执行，彻底击穿任何交互卡死
+      - name: Run build with forced pipeline input
         shell: cmd
         working-directory: ./mabs
         run: |
-          :: 直接调用官方脚本并带上非交互式静默参数
-          :: -silent：彻底关闭任何交互和提问
-          :: -bit 3：对应第3项 (64 bit build system)
-          :: -g 1：不安装 git (等同于之前回答的 n)
-          :: -p y：更新或选择编译环境 (等同于之前回答的 y)
-          :: -b full：编译 full 版本 (等同于之前回答的 full)
-          :: -compiler clang：使用 clang 编译器 (等同于之前回答的 clang)
-          media-autobuild_suite.bat -silent -bit 3 -g 1 -p y -b full -compiler clang
+          (
+            echo.
+            echo 3
+            echo n
+            echo y
+            echo %NUMBER_OF_PROCESSORS%
+            echo n
+            echo y
+            echo full
+            echo clang
+          ) | cmd /c media-autobuild_suite.bat
 
       - name: Package output files
         id: pack_step
@@ -51,7 +54,6 @@ jobs:
         run: |
           mkdir libmpv_output
           mkdir libmpv_output\include
-          :: 使用 xcopy 代替 copy /E，并加上 /I 确保目录正确复制
           xcopy mabs\local64\bin-video\include\* libmpv_output\include\ /E /Y /I
           copy mabs\local64\bin-video\libmpv.dll.a libmpv_output\ /Y
           copy mabs\local64\bin-video\libmpv-2.dll libmpv_output\ /Y
