@@ -41,10 +41,11 @@ jobs:
           echo ffmpeg=full >> build/media-autobuild_suite.ini
           echo compiler=clang >> build/media-autobuild_suite.ini
 
-      - name: Run build auto input 64bit
+      # 官方标准静默编译，彻底移除管道输入，解决set报错+弹窗
+      - name: Run MABS official auto silent build
         shell: cmd
         working-directory: ./mabs
-        run: echo 3 | media-autobuild_suite.bat
+        run: media-autobuild_suite.bat --auto
 
       - name: Package output files
         id: pack_step
