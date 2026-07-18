@@ -18,33 +18,39 @@ jobs:
           path: mabs
           fetch-depth: 1
 
-      - name: Cache build v4 全新缓存清空旧ini
+      - name: Cache build v5
         uses: actions/cache@v4
         with:
           path: |
             mabs/toolchain
             mabs/build
-          key: win-mabs-clang-v4
+          key: win-mabs-clang-v5
 
       - name: Prepare build dir
         shell: cmd
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      - name: Full auto answer stream 一次性输入全部交互选项
+      - name: Generate answer.txt 预生成全部交互应答
         shell: cmd
         working-directory: ./mabs
         run: |
-          (
-          echo 3
-          echo n
-          echo y
-          echo %NUMBER_OF_PROCESSORS%
-          echo n
-          echo y
-          echo full
-          echo clang
-          ) | media-autobuild_suite.bat
+          rem 第一行回车：跳过路径过长 Press any key 弹窗
+          echo. > answer.txt
+          rem 全套编译选项，顺序严格匹配脚本提问
+          echo 3 >> answer.txt
+          echo n >> answer.txt
+          echo y >> answer.txt
+          echo %NUMBER_OF_PROCESSORS% >> answer.txt
+          echo n >> answer.txt
+          echo y >> answer.txt
+          echo full >> answer.txt
+          echo clang >> answer.txt
+
+      - name: Run build with answer file 重定向输入，无管道冲突
+        shell: cmd
+        working-directory: ./mabs
+        run: media-autobuild_suite.bat < answer.txt
 
       - name: Package output files
         id: pack_step
