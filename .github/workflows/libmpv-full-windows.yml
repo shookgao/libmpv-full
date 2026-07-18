@@ -1,5 +1,5 @@
-name: Build libmpv Windows Release (v12.0)
-run-name: Build libmpv x64 Clang Full DV (v12.0)
+name: Build libmpv Windows Release (v12.1)
+run-name: Build libmpv x64 Clang Full DV (v12.1)
 on:
   push:
     branches: [ main ]
@@ -31,9 +31,7 @@ jobs:
         working-directory: ./mabs
         run: if not exist build mkdir build
 
-      # 核心修复 v12.0：用纯标准的 CMD 写入配置，规避任何多行文本转义错误
-      # 这一步保证它即使跳过了交互，也能拿到我们想要的 clang 和 mpv 配置
-      @echo off
+      # 核心修复 v12.1：修正了上个版本导致 YAML 语法错误的无用行
       - name: Generate Base Config
         shell: cmd
         working-directory: ./mabs
@@ -60,15 +58,13 @@ jobs:
           echo mabsChoice=y>> build\media-autobuild_suite.ini
           copy build\media-autobuild_suite.ini media-autobuild_suite.ini /Y
 
-      # 核心修复 v12.0：使用 .NET 进程标准流重定向，杜绝一切由于单双引号引发的 YAML 乱码
-      # 在后台直接拉起 cmd 运行脚本，并连续自动向其输入 "3", "y", "y" 等潜在的交互应答
+      # 使用 .NET 进程管道在后台直接拉起并自动灌入输入流
       - name: Force Feed Standard Input via .NET Process
         shell: powershell
         working-directory: ./mabs
         run: |
           $pInfo = New-Object System.Diagnostics.ProcessStartInfo
           $pInfo.FileName = "cmd.exe"
-          # 使用 /c 干净地执行 bat 脚本，并附带官方静默参数
           $pInfo.Arguments = "/c media-autobuild_suite.bat --unattended --silent"
           $pInfo.RedirectStandardInput = $true
           $pInfo.RedirectStandardOutput = $true
@@ -78,23 +74,20 @@ jobs:
           $process = New-Object System.Diagnostics.Process
           $process.StartInfo = $pInfo
           
-          # 启动进程
           [void]$process.Start()
           
-          # 无论它弹不弹出提问，连续向其输入流灌入选择，回车闭合
-          # 3 代表 64位构建系统，后面补几个默认的 Enter 或 y 以防万一
+          # 连续向标准输入流灌入选择，回车闭合以击穿可能的交互提问
           $process.StandardInput.WriteLine("3")
           $process.StandardInput.WriteLine("y")
           $process.StandardInput.WriteLine("y")
           $process.StandardInput.Flush()
           
-          # 实时将它的标准输出打印到 GitHub Actions 终端，方便我们看日志
+          # 实时打印终端输出
           while (-not $process.HasExited) {
               $output = $process.StandardOutput.ReadLine()
               if ($output) { Write-Host $output }
           }
           
-          # 检查退出码
           if ($process.ExitCode -ne 0) {
               $err = $process.StandardError.ReadToEnd()
               Write-Error "构建失败，错误信息: $err"
@@ -125,7 +118,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: libmpv-stable
-          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.0)
+          release_name: libmpv Windows x64 Clang Full DolbyVision (v12.1)
           body: |
             ### Build Info
             - Clang x64 static build libmpv
